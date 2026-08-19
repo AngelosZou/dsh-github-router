@@ -1,0 +1,79 @@
+{
+  "name": "dsh-github-router",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness plugin: read-only GitHub access for agents (github_probe / github_pr / github_issue / github_file / github_api). Routes every request inside the tool — api.github.com (direct or proxy), gh CLI, git protocol (plugin-owned fetch cache plus read-only local repo reads), PR/issue page HTML with strict JSON embeddedData extraction, and optional user-configured raw mirrors — so agents never burn turns fighting sandbox TLS/proxy failures in a shell. No write/push capability exists anywhere in the plugin.",
+  "keywords": [
+    "dsh-plugin",
+    "dsh",
+    "deepseek-harness",
+    "github",
+    "pull-request",
+    "issue",
+    "read-only",
+    "proxy",
+    "router"
+  ],
+  "license": "MIT",
+  "author": "Yutong Zou <yutong.zou.24@alumni.ucl.ac.uk> (https://github.com/AngelosZou)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AngelosZou/dsh-github-router.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AngelosZou/dsh-github-router/issues"
+  },
+  "homepage": "https://github.com/AngelosZou/dsh-github-router#readme",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "SECURITY.md",
+    "README.md",
+    "README.zh.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "docs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-credentials": "^0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "^2.0.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node --test --test-isolation=none \"test/*.test.js\""
+  }
+}
