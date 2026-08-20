@@ -54,68 +54,93 @@ function loadClientModule() {
   return { apply: moduleExports.apply, inject: moduleExports.inject }
 }
 
-/** A fake host config service behind a fetch stub. */
-function fakeHost(initial = {}) {
-  const state = {
-    value: initial.value ?? {},
-    base: initial.base ?? {},
-    user: initial.user ?? {},
-    revision: initial.revision ?? 0,
-    writable: true,
-    failGet: false,
-    failPost: false,
+/**
+ * The describe mirror's secret-slot face: the only source for whether the
+ * redacted `token` field is configured. The fake scope folds token writes
+ * into it, mirroring the real SettingsScopeController → mirror accept path.
+ */
+function fakeMirror(configured = false) {
+  let tokenSet = configured
+  const listeners = new Set()
+  return {
+    namespace: (ns) => (ns === 'dsh-github-router' ? { secrets: [{ path: ['token'], set: tokenSet }] } : undefined),
+    subscribe: (fn) => {
+      listeners.add(fn)
+      return () => listeners.delete(fn)
+    },
+    foldToken: (value) => {
+      tokenSet = value
+      listeners.forEach((fn) => fn())
+    },
+    tokenSet: () => tokenSet,
   }
-  const calls = []
-  const view = () => ({
-    value: { ...state.value },
-    base: { ...state.base },
-    user: { ...state.user },
-    revision: state.revision,
-    writable: state.writable,
-  })
-  const jsonResponse = (status, body) => Promise.resolve({ status, json: () => Promise.resolve(body) })
-  globalThis.fetch = (url, init) => {
-    calls.push({ url, init })
-    if (url !== '/dsh-github-router/config') return jsonResponse(404, { ok: false, error: 'not found' })
-    if (init === undefined || init.method === 'GET') {
-      return state.failGet
-        ? jsonResponse(503, { ok: false, error: 'describe failed' })
-        : jsonResponse(200, { ok: true, value: view() })
-    }
-    if (init.method === 'POST') {
-      if (state.failPost) return jsonResponse(409, { ok: false, error: 'mutate rejected' })
-      const payload = JSON.parse(init.body)
-      if (!Number.isInteger(payload.expectedRevision) || payload.expectedRevision === state.revision) {
-        for (const op of payload.ops) {
-          if (op.op === 'set') {
-            state.user[op.path[0]] = op.value
-            state.value[op.path[0]] = op.value
-          } else {
-            delete state.user[op.path[0]]
-            delete state.value[op.path[0]]
-          }
-        }
-        state.revision += 1
-        return jsonResponse(200, { ok: true, value: view() })
-      }
-      return jsonResponse(409, { ok: false, error: 'settings namespace changed since it was read' })
-    }
-    return jsonResponse(405, { ok: false, error: 'method not allowed' })
-  }
-  return { state, calls }
 }
 
-function fakeCtx() {
+/** A fake framework settings scope: synchronous snapshot + queued writes. */
+function fakeScope(initial = {}, mirror = null) {
+  const state = {
+    status: initial.status ?? 'ready',
+    value: { ...(initial.value ?? {}) },
+    base: { ...(initial.base ?? {}) },
+    user: { ...(initial.user ?? {}) },
+    revision: initial.revision ?? 0,
+    writable: initial.writable ?? true,
+    mode: 'host',
+  }
+  let failWrites = false
+  const listeners = new Set()
+  const calls = []
+  function notify() {
+    listeners.forEach((fn) => fn())
+  }
+  return {
+    state,
+    calls,
+    failWrites(value) {
+      failWrites = value
+    },
+    getSnapshot: () => state,
+    subscribe: (fn) => {
+      listeners.add(fn)
+      return () => listeners.delete(fn)
+    },
+    set: async (field, value) => {
+      calls.push({ op: 'set', field, value })
+      if (failWrites) return
+      state.user[field] = value
+      state.value[field] = value
+      state.revision += 1
+      if (field === 'token' && mirror !== null) mirror.foldToken(true)
+      notify()
+    },
+    unset: async (field) => {
+      calls.push({ op: 'unset', field })
+      if (failWrites) return
+      delete state.user[field]
+      delete state.value[field]
+      state.revision += 1
+      if (field === 'token' && mirror !== null) mirror.foldToken(false)
+      notify()
+    },
+  }
+}
+
+function fakeCtx(scope, mirror) {
   const registrations = []
   return {
     registrations,
-    get: () => undefined,
+    get: (name) => (name === 'connection' ? {} : undefined),
     locale: {
       bind: () => (key) => key,
       register: () => {},
     },
     effect: (fn) => {
       fn()
+      return () => {}
+    },
+    settingsScope: {
+      bind: () => scope,
+      describe: () => mirror,
     },
     slots: {
       inject: (slot, generator) => {
@@ -135,123 +160,147 @@ function tick() {
   return new Promise((resolve) => setImmediate(resolve))
 }
 
-describe('client settings page module', () => {
-  it('declares the services the row activates on', () => {
+function mountClient(initial = {}, mirror = null) {
+  const mod = loadClientModule()
+  const scope = fakeScope(initial, mirror)
+  const ctx = fakeCtx(scope, mirror)
+  mod.apply(ctx)
+  return { mod, scope, ctx, face: faceOf(ctx) }
+}
+
+describe('client settings card module', () => {
+  it('declares the services the card activates on', () => {
     const mod = loadClientModule()
-    assert.deepEqual(mod.inject, ['slots', 'locale'])
+    assert.deepEqual(mod.inject, ['slots', 'locale', 'settingsScope', 'connection'])
   })
 
-  it('registers one independent settings section', () => {
-    const mod = loadClientModule()
-    fakeHost({ value: { proxy: '' } })
-    const ctx = fakeCtx()
-    mod.apply(ctx)
+  it('registers one plugin card keyed by the settings namespace', () => {
+    const { ctx } = mountClient({ value: { proxy: '' } })
     assert.equal(ctx.registrations.length, 1)
-    assert.equal(ctx.registrations[0].options.name, 'settings.section')
-    assert.equal(ctx.registrations[0].options.id, 'dsh-github-router')
-    assert.equal(ctx.registrations[0].options.order, 65)
-    assert.equal(typeof ctx.registrations[0].options.label, 'function')
+    assert.equal(ctx.registrations[0].options.name, 'settings.plugin.item')
+    assert.equal(ctx.registrations[0].options.key, 'dsh-github-router')
+    assert.equal(ctx.registrations[0].options.locale, 'dsh-github-router')
     assert.equal(typeof ctx.registrations[0].component, 'function')
   })
 
-  it('loads the namespace view through the plugin route', async () => {
-    const mod = loadClientModule()
-    fakeHost({ value: { proxy: 'http://old.example', retries: 1 }, revision: 3 })
-    const ctx = fakeCtx()
-    mod.apply(ctx)
-    const face = faceOf(ctx)
+  it('binds the namespace and projects the scope snapshot into the form', async () => {
+    const { scope, face } = mountClient({ value: { proxy: 'http://old.example', retries: 1 }, revision: 3 })
     await tick()
     const snapshot = face.hooks.settings.getSnapshot()
     assert.equal(snapshot.available, true)
     assert.equal(snapshot.writable, true)
     assert.equal(snapshot.fields.proxy.text, 'http://old.example')
     assert.equal(snapshot.fields.retries.text, '1')
+    assert.equal(scope.calls.length, 0, 'reading never writes')
   })
 
-  it('stages edits and writes them through POST on save', async () => {
-    const mod = loadClientModule()
-    const host = fakeHost({ value: { proxy: '' }, revision: 0 })
-    const ctx = fakeCtx()
-    mod.apply(ctx)
-    const face = faceOf(ctx)
+  it('stages edits and writes them through the scope on save', async () => {
+    const { scope, face } = mountClient({ value: { proxy: '' }, revision: 0 })
     await tick()
 
     face.edit('proxy', 'http://proxy.example.com:3128')
     let snapshot = face.hooks.settings.getSnapshot()
     assert.equal(snapshot.dirty, true)
     assert.equal(snapshot.fields.proxy.text, 'http://proxy.example.com:3128')
-    assert.equal(host.calls.filter((c) => c.init && c.init.method === 'POST').length, 0, 'edits are staged, not written')
+    assert.equal(scope.calls.length, 0, 'edits are staged, not written')
 
     face.save()
     await tick()
     await tick()
-    const post = host.calls.find((c) => c.init && c.init.method === 'POST')
-    assert.ok(post !== undefined)
-    const payload = JSON.parse(post.init.body)
-    assert.deepEqual(payload.ops, [{ op: 'set', path: ['proxy'], value: 'http://proxy.example.com:3128' }])
-    assert.equal(payload.expectedRevision, 0)
-    assert.equal(host.state.user.proxy, 'http://proxy.example.com:3128')
+    assert.deepEqual(scope.calls, [{ op: 'set', field: 'proxy', value: 'http://proxy.example.com:3128' }])
+    assert.equal(scope.state.user.proxy, 'http://proxy.example.com:3128')
     snapshot = face.hooks.settings.getSnapshot()
     assert.equal(snapshot.dirty, false)
   })
 
   it('blocks the save when a number field is invalid', async () => {
-    const mod = loadClientModule()
-    const host = fakeHost({ value: { retries: 1 } })
-    const ctx = fakeCtx()
-    mod.apply(ctx)
-    const face = faceOf(ctx)
+    const { scope, face } = mountClient({ value: { retries: 1 } })
     await tick()
     face.edit('retries', 'not-a-number')
     assert.equal(face.hooks.settings.getSnapshot().invalid, true)
     face.save()
     await tick()
-    assert.equal(host.calls.some((c) => c.init && c.init.method === 'POST'), false)
+    assert.equal(scope.calls.length, 0)
   })
 
   it('parses booleans and csv arrays into typed writes', async () => {
-    const mod = loadClientModule()
-    const host = fakeHost({ value: { routesMirror: false, mirrors: [] } })
-    const ctx = fakeCtx()
-    mod.apply(ctx)
-    const face = faceOf(ctx)
+    const { scope, face } = mountClient({ value: { routesMirror: false, mirrors: [] } })
     await tick()
     face.edit('routesMirror', 'true')
     face.edit('mirrors', 'https://a.example, https://b.example')
     face.save()
     await tick()
     await tick()
-    assert.equal(host.state.user.routesMirror, true)
-    assert.deepEqual(host.state.user.mirrors, ['https://a.example', 'https://b.example'])
+    assert.equal(scope.state.user.routesMirror, true)
+    assert.deepEqual(scope.state.user.mirrors, ['https://a.example', 'https://b.example'])
   })
 
-  it('clears overridden fields through unset ops', async () => {
-    const mod = loadClientModule()
-    const host = fakeHost({
+  it('clears overridden fields through unset writes', async () => {
+    const { scope, face } = mountClient({
       value: { proxy: 'http://old.example' },
       user: { proxy: 'http://old.example' },
       revision: 5,
     })
-    const ctx = fakeCtx()
-    mod.apply(ctx)
-    const face = faceOf(ctx)
     await tick()
     assert.equal(face.hooks.settings.getSnapshot().fields.proxy.overridden, true)
     face.resetField('proxy')
     face.save()
     await tick()
     await tick()
-    const post = host.calls.find((c) => c.init && c.init.method === 'POST')
-    assert.deepEqual(JSON.parse(post.init.body).ops, [{ op: 'unset', path: ['proxy'] }])
-    assert.equal(host.state.user.proxy, undefined)
+    assert.deepEqual(scope.calls, [{ op: 'unset', field: 'proxy' }])
+    assert.equal(scope.state.user.proxy, undefined)
+  })
+
+  it('keeps drafts and reports failure when a write does not land', async () => {
+    const { scope, face } = mountClient({ value: { proxy: '' } })
+    await tick()
+    scope.failWrites(true)
+    face.edit('proxy', 'http://proxy.example.com:3128')
+    face.save()
+    await tick()
+    await tick()
+    const snapshot = face.hooks.settings.getSnapshot()
+    assert.equal(snapshot.failed, true)
+    assert.equal(snapshot.dirty, true)
+  })
+
+  it('writes a typed token and verifies it through the secret slot list', async () => {
+    const mirror = fakeMirror(false)
+    const { scope, face } = mountClient({ value: {} }, mirror)
+    await tick()
+    assert.equal(face.hooks.settings.getSnapshot().fields.token.configured, false)
+    face.edit('token', 'ghp_abc')
+    face.save()
+    await tick()
+    await tick()
+    assert.deepEqual(scope.calls, [{ op: 'set', field: 'token', value: 'ghp_abc' }])
+    assert.equal(mirror.tokenSet(), true)
+    assert.equal(face.hooks.settings.getSnapshot().dirty, false)
+  })
+
+  it('clears a configured token with a blank draft and stays inert otherwise', async () => {
+    const mirror = fakeMirror(true)
+    const { scope, face } = mountClient({ value: {} }, mirror)
+    await tick()
+    assert.equal(face.hooks.settings.getSnapshot().fields.token.configured, true)
+    face.edit('token', '')
+    face.save()
+    await tick()
+    await tick()
+    assert.deepEqual(scope.calls, [{ op: 'unset', field: 'token' }])
+
+    const unconfiguredMirror = fakeMirror(false)
+    const { scope: scope2, face: face2 } = mountClient({ value: {} }, unconfiguredMirror)
+    await tick()
+    face2.edit('token', '')
+    face2.save()
+    await tick()
+    await tick()
+    assert.equal(scope2.calls.length, 0, 'blank draft without a configured token writes nothing')
   })
 
   it('exposes the store through the hooks face (useSettings contract)', async () => {
-    const mod = loadClientModule()
-    fakeHost({ value: { proxy: '' } })
-    const ctx = fakeCtx()
-    mod.apply(ctx)
-    const face = faceOf(ctx)
+    const { face } = mountClient({ value: { proxy: '' } })
     await tick()
     assert.ok(face.hooks !== undefined, 'inject face carries the hooks object')
     assert.equal(typeof face.hooks.settings.getSnapshot, 'function')
@@ -261,29 +310,21 @@ describe('client settings page module', () => {
     assert.equal(typeof face.discard, 'function')
   })
 
-  it('marks the page unavailable when the route rejects the read', async () => {
-    const mod = loadClientModule()
-    const host = fakeHost({ value: {} })
-    host.state.failGet = true
-    const ctx = fakeCtx()
-    mod.apply(ctx)
+  it('renders null while the namespace is not served', () => {
+    const { ctx } = mountClient({ value: {}, status: 'loading' })
+    const component = ctx.registrations[0].component
     const face = faceOf(ctx)
-    await tick()
-    assert.equal(face.hooks.settings.getSnapshot().available, false)
+    const useSettings = () => face.hooks.settings.getSnapshot()
+    const rendered = component({ useSettings, t: (key) => key })
+    assert.equal(rendered, null, 'the card renders nothing until the scope is ready')
   })
 
   it('splits common and advanced fields into two catalogs', () => {
-    const mod = loadClientModule()
-    fakeHost({ value: {} })
-    const ctx = fakeCtx()
-    mod.apply(ctx)
-    const face = faceOf(ctx)
+    const { face } = mountClient({ value: {} })
     const snapshot = face.hooks.settings.getSnapshot()
-    // Common fields are present…
     for (const field of ['token', 'tokenEnv', 'proxy', 'routesApi', 'routesGh', 'routesGit', 'routesHtml']) {
       assert.ok(snapshot.fields[field] !== undefined, `common field ${field} exists`)
     }
-    // …and the advanced tail is kept in the form too (rendered collapsed).
     for (const field of ['directTimeoutMs', 'cacheTtlMeta', 'routesMirror', 'mirrors', 'repos', 'gitCacheDir']) {
       assert.ok(snapshot.fields[field] !== undefined, `advanced field ${field} exists`)
     }

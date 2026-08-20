@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-21
+
+### Changed
+
+- **Migrated plugin configuration to the framework's plugin-settings mechanism** (requires DSH ≥ 0.1.0-rc.7, which serves every registered settings namespace and dispatches plugin-owned configuration cards). The browser half now registers a `settings.plugin.item` card keyed by the `dsh-github-router` namespace inside Settings → Plugins, bound through `ctx.settingsScope` (shared describe mirror, revision fencing, recovery reads, reconnect invalidation); the plugin-owned `/dsh-github-router/config` web routes and the standalone `settings.section` page are removed. The Host keeps the same `settings.register` seam and adds `applies: 'live'`.
+- The token control is now a true write-only field: the configured state comes from the describe mirror's secret slot list (badge: "已配置/configured"), a typed value writes the token, and a blank save clears a configured one.
+- Runtime requirements: the settings card needs DSH ≥ 0.1.0-rc.7; the Host-side settings seam alone still works on older compositions (tools resolve the composition config as before).
+
 ## [0.1.0] - 2026-08-19
 
 First release.

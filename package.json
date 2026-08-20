@@ -1,6 +1,6 @@
 {
   "name": "dsh-github-router",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DeepSeek Harness plugin: read-only GitHub access for agents (github_probe / github_pr / github_issue / github_file / github_api). Routes every request inside the tool — api.github.com (direct or proxy), gh CLI, git protocol (plugin-owned fetch cache plus read-only local repo reads), PR/issue page HTML with strict JSON embeddedData extraction, and optional user-configured raw mirrors — so agents never burn turns fighting sandbox TLS/proxy failures in a shell. No write/push capability exists anywhere in the plugin.",
   "keywords": [
     "dsh-plugin",

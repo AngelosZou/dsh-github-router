@@ -76,13 +76,14 @@ Behavior notes:
 
 ## Configuration
 
-Settings → **GitHub Router** opens an independent settings page (a nav
-entry registered into `settings.section`, the same mechanism as the 通知
-section): edits are staged locally and written only on save, fields
-overridden by the user are badged, and blank fields fall back to the
-defaults below. The same values can be set in the composition (profile
-`cordis.patch.yml`) as the plugin's base config; the Settings UI overrides
-per user.
+Settings → **Plugins** shows the **GitHub Router** card on the configurable
+tab (the framework's `settings.plugin.item` card slot keyed by the settings
+namespace; requires DSH ≥ 0.1.0-rc.7): edits are staged locally and written
+only on save, fields overridden by the user are badged, and blank fields
+fall back to the defaults below. The token is a write-only field — a blank
+save clears a configured token. The same values can be set in the
+composition (profile `cordis.patch.yml`) as the plugin's base config; the
+Settings UI overrides per user.
 
 | Field | Default | Meaning |
 | --- | --- | --- |
@@ -112,8 +113,8 @@ per user.
 | Path | Purpose |
 | ---- | ------- |
 | `cordis.patch.yml` | Profile patch layer inserting the `dsh-github-router` row |
-| `lib/index.js` | Host plugin: settings section, five tools, skill, guidance |
-| `lib/client.js` | Browser half: the independent Settings page (hand-written factory bundle, no build step) |
+| `lib/index.js` | Host plugin: settings namespace, five tools, skill, guidance |
+| `lib/client.js` | Browser half: the settings card (hand-written factory bundle, no build step) |
 | `lib/config.js` | Settings schema, defaults, runtime option resolution |
 | `lib/net.js`, `lib/tunnel.js` | Route-aware HTTP layer; zero-dependency CONNECT proxy tunnel |
 | `lib/routes/` | One module per route: `api` (GET-only REST), `gh` (CLI), `git` (protocol), `html` (page parse), `mirror` (raw mirrors) |

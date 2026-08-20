@@ -107,44 +107,50 @@ substitute bytes. When enabled, each configured base yields two candidates
 per file (raw passthrough and the `github.com` `/raw/` route), tried in
 order.
 
-## Settings page
+## Settings card
 
 The Host registers the `dsh-github-router` settings namespace on the
 official settings seam (durable document, schema validation, revision
-fencing); the browser half (`lib/client.js`, a hand-written ModuleLoader
-factory bundle with no build step) registers an INDEPENDENT settings nav
-entry into the `settings.section` slot — the same mechanism
-dsh-notification uses.
+fencing, `applies: 'live'`). The browser half (`lib/client.js`, a
+hand-written ModuleLoader factory bundle with no build step) registers one
+plugin configuration CARD into the `settings.plugin.item` slot keyed by the
+namespace — the framework's mechanism for plugins distributed outside the
+repository (DSH ≥ 0.1.0-rc.7): the Settings → Plugins configurable tab
+reads which namespaces the Host serves and dispatches the intersection of
+that ledger and the registered cards, so the card appears only when the
+namespace is registered and served.
 
-### Framework limitation: the settings exposure allowlist
+### Framework transport
 
-The framework's api-proxy serves settings namespaces to configuration
-clients ONLY through its hardcoded allowlist (`WEB_SETTINGS_NAMESPACES` /
-`PRODUCT_SETTINGS_NAMESPACES` / model-provider namespaces in
-`dsh-host-apiproxy`) — a third-party namespace answers
-`settings-not-exposed` on both reads and writes even when registered, and
-the browser `settingsScope` therefore reports it `unavailable`. Exposing a
-namespace from `settings.register()` is explicitly deferred framework
-work.
+Since DSH 0.1.0-rc.7 the api-proxy serves every registered settings
+namespace (the earlier `WEB_SETTINGS_NAMESPACES` allowlist and its
+`settings-not-exposed` answer retired in PR #2404), so the card binds the
+namespace through the framework settings transport:
+`ctx.settingsScope.bind({ namespace })` returns a `SettingsScope` whose
+snapshot carries the redacted resolved section
+(`status`/`value`/`base`/`user`/`revision`/`writable`). All consumers
+derive from one shared describe mirror, so reads never block activation,
+writes carry revision fencing and recovery re-reads, and the mirror
+refreshes on `settings/document-updated` and `connection/reset` — a Host
+restart no longer strands the form in a failed state. No plugin-owned HTTP
+route exists.
 
-### Plugin-owned configuration routes
+### Card form
 
-The channel is the dsh-market pattern: the Host mounts its own routes on
-the shared web server (`ctx.webServer.register`, prefix
-`/dsh-github-router`) and the browser page talks to them with plain
-same-origin fetch — no typert, no gateway, no allowlist. The routes are
-backed by the SAME settings seam (`lib/remote.js`): GET returns a redacted
-view (`value`/`base`/`user`/`revision`/`writable`, secrets stripped); POST
-applies single-field `set`/`unset` ops with revision fencing (conflicts
-answer 409 and the client reloads the view); writes require same-origin
-POSTs and are body-capped. The page's row activates on the
-notification-proven service set (`slots`, `locale`).
+Edits are staged locally and written only on save, one field per
+`scope.set`/`scope.unset`; after each write the card verifies the user
+layer (JSON-shaped deep equality) and keeps drafts that did not land.
+Secret fields never ride a response, so the token control is write-only:
+its configured state comes from the describe mirror's secret slot list
+(the snapshot itself redacts it from every layer), a typed value writes the
+token through `settings.mutate` (the one direction secrets cross the wire),
+and a blank draft clears a configured one.
 
-Because the routes write **scalar fields by name**, the settings schema
-is deliberately flat (`routesApi`, `cacheTtlMeta`, …); the Host projects
-it into the nested runtime shape (`routes.api`, `cacheTtlSeconds.meta`) in
+Because the scope writes **scalar fields by name**, the settings schema is
+deliberately flat (`routesApi`, `cacheTtlMeta`, …); the Host projects it
+into the nested runtime shape (`routes.api`, `cacheTtlSeconds.meta`) in
 `resolveOptions`. The composition layer can still carry the same flat
-keys. The page shows the common fields up top (token, proxy, main route
+keys. The card shows the common fields up top (token, proxy, main route
 switches) and the long tail (timeouts, retries, cache TTLs, mirrors,
 repos, git cache dir) in a collapsed "Advanced settings" disclosure.
 
