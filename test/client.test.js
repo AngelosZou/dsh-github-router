@@ -48,7 +48,7 @@ function loadClientModule() {
   }
   const moduleExports = captured.factory((name) => {
     if (name === 'react') return reactStub
-    if (name === '@deepseek-ai/dsh-client-runtime/client') return runtimeStub
+    if (name === '@deepseek-ai/dsh-client-store') return runtimeStub
     throw new Error('unexpected require in factory: ' + name)
   })
   return { apply: moduleExports.apply, inject: moduleExports.inject }
