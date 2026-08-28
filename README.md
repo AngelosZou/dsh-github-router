@@ -46,6 +46,15 @@ dsh plugin --profile web add github:<owner>/dsh-github-router
 
 Then **restart the DSH backend** — the host composition loads at process start. The tools appear in new sessions: `github_probe`, `github_pr`, `github_issue`, `github_file`, `github_api`, plus the `github-router` skill.
 
+## Compatibility
+
+Choose the plugin version that matches your DeepSeek Harness release:
+
+| DeepSeek Harness | Install |
+| --- | --- |
+| 0.1.1 or earlier | `dsh-github-router@0.2.1` |
+| 0.1.2-alpha or later | the latest `dsh-github-router` |
+
 ## Usage
 
 Agent side:

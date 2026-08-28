@@ -48,6 +48,15 @@ dsh plugin --profile web add github:<owner>/dsh-github-router
 `github_probe`、`github_pr`、`github_issue`、`github_file`、`github_api`，
 以及 `github-router` 技能。
 
+## 兼容性
+
+请选择与你的 DeepSeek Harness 版本匹配的插件版本：
+
+| DeepSeek Harness | 安装 |
+| --- | --- |
+| 0.1.1 及更早 | `dsh-github-router@0.2.1` |
+| 0.1.2-alpha 及更新 | 最新版 `dsh-github-router` |
+
 ## 使用
 
 Agent 侧：
