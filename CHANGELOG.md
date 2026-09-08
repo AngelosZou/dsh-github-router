@@ -5,16 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.2] - 2026-09-08
 
 ### Fixed
 
 - The `gh` route now builds valid arguments for its viewers.
 - The `gh` route now returns the metadata URL field.
+- The proxy transport now decodes chunked responses.
+- The html route now handles the current GitHub pull request page payload.
+- Fallback routes are now entered only when a part could not be fetched.
 
 ### Added
 
-- Offline argument regression tests for the `gh` route.
+- Offline regression tests for the `gh` route, chunked decoding, and failover gating.
 
 ## [0.3.1] - 2026-08-28
 
