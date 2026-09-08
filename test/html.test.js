@@ -58,6 +58,41 @@ describe('prFromPayloads', () => {
     assert.equal(pr.baseRef, 'main')
     assert.equal(pr.headRef, 'fix-routing')
   })
+
+  // GitHub's current pull-request page embeds baseBranch/headBranch/headSha/
+  // createdTime/mergedTime instead of the GraphQL-style field names above.
+  const PR_PAGE_CURRENT = `<!doctype html><html><head>
+<script type="application/json" data-target="react-app.embeddedData">{"payload":{"pullRequestsLayoutRoute":{"pullRequest":{"number":14391,"title":"Bump deps","state":"OPEN","author":{"login":"dependabot"},"baseBranch":"trunk","headBranch":"dependabot/go_modules/x-0.23.0","headSha":"20c599bb3e8acf889c86d35b2ed9889a663f1a49","createdTime":"2026-09-08T14:03:00Z","mergedTime":null,"commitsCount":1}}}}</script>
+</head><body></body></html>`
+
+  it('maps the current page payload field names', () => {
+    const pr = prFromPayloads(extractEmbeddedData(PR_PAGE_CURRENT))
+    assert.ok(pr !== null)
+    assert.equal(pr.title, 'Bump deps')
+    assert.equal(pr.author, 'dependabot')
+    assert.equal(pr.state, 'OPEN')
+    assert.equal(pr.baseRef, 'trunk')
+    assert.equal(pr.headRef, 'dependabot/go_modules/x-0.23.0')
+    assert.equal(pr.headSha, '20c599bb3e8acf889c86d35b2ed9889a663f1a49')
+    assert.equal(pr.createdAt, '2026-09-08T14:03:00Z')
+    assert.equal(pr.mergedAt, null)
+    assert.equal(pr.body, '')
+    assert.equal(pr.additions, null)
+  })
+
+  it('maps mergedTime when the pull request is merged', () => {
+    const html = PR_PAGE_CURRENT.replace('"mergedTime":null', '"mergedTime":"2026-09-08T12:10:28Z"').replace('"state":"OPEN"', '"state":"MERGED"')
+    const pr = prFromPayloads(extractEmbeddedData(html))
+    assert.equal(pr.mergedAt, '2026-09-08T12:10:28Z')
+    assert.equal(pr.state, 'MERGED')
+  })
+
+  it('prefers the node reachable under the pullRequest key', () => {
+    const html = `<script type="application/json" data-target="react-app.embeddedData">{"payload":{"pullRequest":{"number":7,"title":"Rich","headBranch":"x","additions":5,"baseBranch":"main"},"other":{"number":7,"title":"Noise","headBranch":"y","baseBranch":"main"}}}</script>`
+    const pr = prFromPayloads(extractEmbeddedData(html))
+    assert.equal(pr.title, 'Rich')
+    assert.equal(pr.additions, 5)
+  })
 })
 
 describe('issueFromPayloads', () => {
