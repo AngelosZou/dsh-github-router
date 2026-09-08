@@ -189,9 +189,13 @@ within one host process.
 
 ## Known limitations
 
-- **Fallback routes are unexercised while the API is healthy.** The ladder
-  is failover, not fan-out: when api succeeds, gh/html/git are not called
-  (saving quota). Forcing a specific route per call is not yet supported.
+- **Fallback routes are failover, not fan-out — but they are still entered
+  for empty parts.** When the api route succeeds and every requested part is
+  non-empty, gh/html/git are not called (saving quota). They *are* attempted
+  while a part is still empty: a zero-comment issue, or a PR with zero reviews
+  and zero discussion, enters the gh and html ladders (`lib/core/issue.js`,
+  `lib/core/pr.js`), so those routes have to work even when the API is
+  healthy. Forcing a specific route per call is not yet supported.
 - **Anonymous quota is shared per IP** (60 req/h). A PR aggregation costs
   up to six calls. Token configuration is the intended mitigation; the
   cache is the second line.
